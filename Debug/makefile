@@ -39,7 +39,7 @@ all: STM32_Tune.elf
 STM32_Tune.elf: $(OBJS) $(USER_OBJS) ../STM32F411VETx_FLASH.ld
 	@echo 'Building target: $@'
 	@echo 'Invoking: MCU GCC Linker'
-	arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -L"/home/ilya/UCU/Grade2/POC/labs/STM32_Tune/Middlewares/ST/STM32_Audio/Addons/PDM/Lib" -L"/home/ilya/UCU/Grade2/POC/labs/STM32_Tune/libs/CMSIS-master/CMSIS/Lib/GCC"  -specs=nosys.specs -specs=nano.specs -T"../STM32F411VETx_FLASH.ld" -Wl,-Map=output.map -Wl,--gc-sections -o "STM32_Tune.elf" @"objects.list" $(USER_OBJS) $(LIBS) -lm
+	arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -L"/home/ilya/UCU/Grade2/POC/labs/STM32_Tune/Middlewares/ST/STM32_Audio/Addons/PDM/Lib" -L"/home/ilya/UCU/Grade2/POC/labs/STM32_Tune/libs/CMSIS-master/CMSIS/Lib/GCC"  -specs=nosys.specs -specs=nano.specs -u _printf_float -T"../STM32F411VETx_FLASH.ld" -Wl,-Map=output.map -Wl,--gc-sections -o "STM32_Tune.elf" @"objects.list" $(USER_OBJS) $(LIBS) -lm
 	@echo 'Finished building target: $@'
 	@echo ' '
 	$(MAKE) --no-print-directory post-build

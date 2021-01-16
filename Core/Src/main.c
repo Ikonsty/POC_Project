@@ -75,8 +75,8 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN 0 */
 
 uint16_t txBuf[128];
-uint16_t pdmRxBuf[128];
-uint16_t MidBuffer[16];
+uint16_t pdmRxBuf[1024];
+uint16_t MidBuffer[32];
 uint8_t rxstate = 0;
 
 
@@ -87,6 +87,8 @@ uint8_t fifo_read_enabled = 0;
 float fft_out_buf[2048];
 int Fs = 48076;
 int N = 1024;
+
+char str_res[5];
 
 arm_rfft_fast_instance_f32 fft_handler;
 
@@ -111,8 +113,9 @@ void ReadSample() {
 		  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 0);
 		  HAL_Delay(50);
 		  PDM_Filter(&pdmRxBuf[0], &MidBuffer[0], &PDM1_filter_handler); //MidBuffer is the pcm data
-		  for(int i = 0; i < 16; i++) {FifoWrite(MidBuffer[i]);}
-		  if(fifo_w_ptr - fifo_r_ptr > 128) fifo_read_enabled = 1;
+
+//		  for(int i = 0; i < 16; i++) {FifoWrite(MidBuffer[i]);}
+//		  if(fifo_w_ptr - fifo_r_ptr > 128) fifo_read_enabled = 1;
 		  rxstate = 0;
 	  }
 
@@ -122,7 +125,7 @@ void ReadSample() {
 		  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
 		  HAL_Delay(50);
 		  PDM_Filter(&pdmRxBuf[64], &MidBuffer[0], &PDM1_filter_handler);
-		  for(int i = 0; i < 16; i++) {FifoWrite(MidBuffer[i]); }
+//		  for(int i = 0; i < 16; i++) {FifoWrite(MidBuffer[i]); }
 		  rxstate = 0;
 	  }
 }
@@ -132,7 +135,7 @@ float complexABS(float real, float compl) {
 }
 
 int largest_index(float arr[], int len) {
-	float max = 0;
+	int max = 0;
 	for (int i = 1; i < len / 2 + 1; i++) {
 		if (arr[i] > arr[max]) {
 			max = i;
@@ -203,16 +206,17 @@ char* detectString(float freq) {
 			m = mid + 1;
 		}
 	}
-	char str_res[10];
-	sprintf(str_res, "String %i", String);
+	char str_res[35];
+	float diff = freq - String_Freq[String - 1];
+	sprintf(str_res, "String %i, difference = %f", String, diff);
 
 	if (!String) String = String_Freq[mid];
 
-	if (freq - String_Freq[String - 1] < -1) { //too high, make lower
+	if (diff < -1) { //too high, make lower
 		char feedback[] = "\tToo high, make lower\n";
 		return concat(str_res, feedback);
 	}
-	if (freq - String_Freq[String - 1] > 1) { //too low, make higher
+	if (diff > 1) { //too low, make higher
 		char feedback[] = "\tToo low, make it higher\n";
 		return concat(str_res, feedback);
 	}
@@ -258,7 +262,7 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_I2S_Transmit_DMA(&hi2s3, &txBuf[0], 64);
+//  HAL_I2S_Transmit_DMA(&hi2s3, &txBuf[0], 64);
   HAL_I2S_Receive_DMA(&hi2s2, &pdmRxBuf[0],64); //pdm receive
 
   arm_rfft_fast_init_f32(&fft_handler, 2048);
@@ -269,19 +273,11 @@ int main(void)
   while (1)
   {
 	  ReadSample();
-////	  DoFFT(sample);
-//	  PRINT(detectString(78.3));
-//	  HAL_Delay(1000);
-//	  PRINT(detectString(82));
-//	  HAL_Delay(1000);
-//	  PRINT(detectString(88.3));
-//	  HAL_Delay(1000);
-//	  PRINT(detectString(250.0));
-//	  HAL_Delay(1000);
-//	  PRINT(detectString(350.3));
-//	  HAL_Delay(1000);
-//	  PRINT(detectString(328));
-//	  HAL_Delay(1000);
+	  sprintf(str_res, "%f:%f\n", MidBuffer[0], MidBuffer[1]);
+	  PRINT(str_res);
+	  float freq = DoFFT_find_freq(&MidBuffer);
+//	  PRINT(detectString(freq));
+//	  PRINT(detectString(84.15));
 
 //    size_t ln = sizeof(txBuf)/sizeof(txBuf[0]);
 //    for (size_t i = 0; i < ln; i++){
