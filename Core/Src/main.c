@@ -18,8 +18,6 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-#include <stdio.h>
-#include <stdlib.h>
 #include "main.h"
 #include "crc.h"
 #include "dma.h"
@@ -57,14 +55,14 @@ const uint16_t FFT_SIZE = 512;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+
+/* USER CODE BEGIN PV */
 CRC_HandleTypeDef hcrc;
 
 I2S_HandleTypeDef hi2s2;
 I2S_HandleTypeDef hi2s3;
 DMA_HandleTypeDef hdma_spi2_rx;
 DMA_HandleTypeDef hdma_spi3_tx;
-/* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -79,7 +77,6 @@ void SystemClock_Config(void);
 uint16_t txBuf[128];
 uint16_t pdmRxBuf[128];
 uint16_t MidBuffer[16];
-uint8_t txstate = 0;
 uint8_t rxstate = 0;
 
 
@@ -88,6 +85,8 @@ uint8_t fifo_w_ptr = 0;
 uint8_t fifo_r_ptr = 0;
 uint8_t fifo_read_enabled = 0;
 float fft_out_buf[2048];
+int Fs = 48076;
+int N = 1024;
 
 arm_rfft_fast_instance_f32 fft_handler;
 
@@ -105,8 +104,12 @@ uint16_t FifoRead() {
 	return val;
 }
 
-void ReadSample() { //txBuf contain sample
+void ReadSample() {
 	  if(rxstate == 1) {
+		  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 1);
+		  HAL_Delay(50);
+		  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 0);
+		  HAL_Delay(50);
 		  PDM_Filter(&pdmRxBuf[0], &MidBuffer[0], &PDM1_filter_handler); //MidBuffer is the pcm data
 		  for(int i = 0; i < 16; i++) {FifoWrite(MidBuffer[i]);}
 		  if(fifo_w_ptr - fifo_r_ptr > 128) fifo_read_enabled = 1;
@@ -114,31 +117,13 @@ void ReadSample() { //txBuf contain sample
 	  }
 
 	  if(rxstate == 2) {
+		  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 1);
+		  HAL_Delay(50);
+		  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
+		  HAL_Delay(50);
 		  PDM_Filter(&pdmRxBuf[64], &MidBuffer[0], &PDM1_filter_handler);
 		  for(int i = 0; i < 16; i++) {FifoWrite(MidBuffer[i]); }
 		  rxstate = 0;
-	  }
-
-	  if (txstate == 1) {
-		if (fifo_read_enabled == 1) {
-			for (int i = 0; i < 64;i = i + 4) {
-				uint16_t data = FifoRead();
-				txBuf[i] = data;
-				txBuf[i+2] = data;
-			}
-		}
-		txstate=0;
-	  }
-
-	  if(txstate == 2) {
-		  if(fifo_read_enabled == 1) {
-			  for(int i = 64; i < 128; i = i + 4) {
-				  uint16_t data = FifoRead();
-				  txBuf[i] = data;
-				  txBuf[i+2] = data;
-			  }
-		  }
-		  txstate = 0;
 	  }
 }
 
@@ -146,7 +131,17 @@ float complexABS(float real, float compl) {
 	return sqrtf(real*real+compl*compl);
 }
 
-float* DoFFT(float* fft_in_buf) {
+int largest_index(float arr[], int len) {
+	float max = 0;
+	for (int i = 1; i < len / 2 + 1; i++) {
+		if (arr[i] > arr[max]) {
+			max = i;
+		}
+	}
+	return max;
+}
+
+float DoFFT_find_freq(float* fft_in_buf) {
 	//Do FFT
 	arm_rfft_fast_f32(&fft_handler, fft_in_buf, fft_out_buf, 0);
 
@@ -155,12 +150,16 @@ float* DoFFT(float* fft_in_buf) {
 	int offset = 150; //variable noisefloor offset
 
 	//calculate abs values and linear-to-dB
-	for (int i=0; i<2048; i=i+2) {
+	for (int i = 0; i < 2048; i = i + 2) {
 		freqs[freqpoint] = (float)(20*log10f(complexABS(fft_out_buf[i], fft_out_buf[i+1])))-offset;
-		if (freqs[freqpoint]<0) freqs[freqpoint]=0;
+		if (freqs[freqpoint] < 0) freqs[freqpoint] = 0;
 		freqpoint++;
 	}
-	return freqs;
+	int f_ln = sizeof(freqs)/sizeof(freqs[0]);
+	float l_index = largest_index(freqs, f_ln);
+
+	float frequency = l_index * Fs / N;
+	return frequency;
 }
 
 int getClosest(float val1, float val2, float freq, int index) {
@@ -226,7 +225,6 @@ char* detectString(float freq) {
   * @brief  The application entry point.
   * @retval int
   */
-
 int main(void)
 {
   /* USER CODE BEGIN 1 */
@@ -254,7 +252,6 @@ int main(void)
   MX_DMA_Init();
   MX_I2C1_Init();
   MX_I2S2_Init();
-  MX_I2S3_Init();
   MX_SPI1_Init();
   MX_CRC_Init();
   MX_PDM2PCM_Init();
@@ -271,20 +268,20 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  sample = ReadSample();
-//	  DoFFT(sample);
-	  PRINT(detectString(78.3));
-	  HAL_Delay(1000);
-	  PRINT(detectString(82));
-	  HAL_Delay(1000);
-	  PRINT(detectString(88.3));
-	  HAL_Delay(1000);
-	  PRINT(detectString(250.0));
-	  HAL_Delay(1000);
-	  PRINT(detectString(350.3));
-	  HAL_Delay(1000);
-	  PRINT(detectString(328));
-	  HAL_Delay(1000);
+	  ReadSample();
+////	  DoFFT(sample);
+//	  PRINT(detectString(78.3));
+//	  HAL_Delay(1000);
+//	  PRINT(detectString(82));
+//	  HAL_Delay(1000);
+//	  PRINT(detectString(88.3));
+//	  HAL_Delay(1000);
+//	  PRINT(detectString(250.0));
+//	  HAL_Delay(1000);
+//	  PRINT(detectString(350.3));
+//	  HAL_Delay(1000);
+//	  PRINT(detectString(328));
+//	  HAL_Delay(1000);
 
 //    size_t ln = sizeof(txBuf)/sizeof(txBuf[0]);
 //    for (size_t i = 0; i < ln; i++){
@@ -352,14 +349,6 @@ void SystemClock_Config(void)
   }
 }
 
-/* USER CODE BEGIN 4 */
-void HAL_I2S_TxHalfCpltCallback(I2S_HandleTypeDef *hi2s) {
-    txstate = 1;
-}
-
-void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s) {
-    txstate = 2;
-}
 
 void HAL_I2S_RxHalfCpltCallback (I2S_HandleTypeDef *hi2s) {
 	rxstate = 1;
